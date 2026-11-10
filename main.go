@@ -2,42 +2,37 @@ package main
 
 import (
 	"fmt"
-	"oop/factory"
+	"oop/base"
 	"oop/field"
 )
 
 func main() {
 	gameField := field.NewGameField(8, 8, 10)
 
-	infFactory := &factory.InfantryFactory{}
-	archFactory := &factory.ArcherFactory{}
-	cavFactory := &factory.CavalryFactory{}
+	base := base.NewBase(300, 30, 5, 0, 10, 1, 5)
+	gameField.AddBase(base, 1, 5)
 
-	swordsman, _ := infFactory.CreateUnit("swordsman")
-	spearman, _ := infFactory.CreateUnit("spearman")
-	lightArcher, _ := archFactory.CreateUnit("light")
-	cataphract, _ := cavFactory.CreateUnit("cataphract")
-
-	gameField.AddUnit(swordsman, 1, 3)
-	gameField.AddUnit(spearman, 2, 1)
-	gameField.AddUnit(lightArcher, 4, 3)
-	gameField.AddUnit(cataphract, 6, 5)
+	sw1, err := gameField.BaseAddUnit(base.GetId(), "swordsman")
+	if err != nil {
+		fmt.Println("ошибка при добавлении юнита базой: ", err)
+	}
+	sw2, err := gameField.BaseAddUnit(base.GetId(), "swordsman")
+	if err != nil {
+		fmt.Println("ошибка при добавлении юнита базой: ", err)
+	}
 
 	gameField.PrintGameField()
 	gameField.PrintUnitsInfo()
 
-	swordsman.AttackTarget(cataphract)
+	sw1.AttackTarget(sw2)
 
-	if err := gameField.MoveUnit(cataphract, 7, 7); err != nil {
+	if err := gameField.MoveUnit(sw1, 7, 7); err != nil {
 		fmt.Println("\nОшибка перемещения: ", err)
 	}
 
-	cataphract.AttackTarget(lightArcher)
-	cataphract.AttackTarget(lightArcher)
-
 	gameField.PrintGameField()
 	gameField.PrintUnitsInfo()
 
-	cataphract.AttackTarget(lightArcher)
-
+	gameField.PrintGameField()
+	gameField.PrintUnitsInfo()
 }

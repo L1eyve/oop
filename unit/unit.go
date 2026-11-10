@@ -3,23 +3,28 @@ package unit
 import (
 	"fmt"
 	"oop/attributes"
+	"oop/damageable"
 )
 
 type Unit interface {
+	GetId() string
+	GetIdBase() string
 	GetName() string
 	GetHealth() *attributes.Health
 	GetArmor() *attributes.Armor
 	GetAttack() *attributes.Attack
 	GetPosition() attributes.Point
-	GetSymbol() string
+	GetSymbol() int
 	Move(x, y int) error
 	Clone() Unit
-	AttackTarget(target Unit)
+	AttackTarget(target damageable.Damageable)
 }
 
 type BaseUnit struct {
+	id     string
+	idBase string
 	name   string
-	symbol string
+	symbol int
 	health *attributes.Health
 	armor  *attributes.Armor
 	attack *attributes.Attack
@@ -64,6 +69,10 @@ type HorseArcher struct {
 	Cavalry
 }
 
+func (b *BaseUnit) GetId() string { return b.id }
+
+func (b *BaseUnit) GetIdBase() string { return b.idBase }
+
 func (b *BaseUnit) GetName() string { return b.name }
 
 func (b *BaseUnit) GetHealth() *attributes.Health { return b.health }
@@ -74,7 +83,7 @@ func (b *BaseUnit) GetAttack() *attributes.Attack { return b.attack }
 
 func (b *BaseUnit) GetPosition() attributes.Point { return b.pos }
 
-func (b *BaseUnit) GetSymbol() string { return b.symbol }
+func (b *BaseUnit) GetSymbol() int { return b.symbol }
 
 func (b *BaseUnit) Move(x, y int) error {
 	b.pos = attributes.Point{
@@ -85,7 +94,7 @@ func (b *BaseUnit) Move(x, y int) error {
 	return nil
 }
 
-func (b *BaseUnit) AttackTarget(target Unit) {
+func (b *BaseUnit) AttackTarget(target damageable.Damageable) {
 	if target.GetHealth().GetValue() == 0 {
 		fmt.Printf("\n>>> %s уже мертв, атаковать нельзя <<<", target.GetName())
 		return
@@ -98,86 +107,59 @@ func (b *BaseUnit) AttackTarget(target Unit) {
 
 }
 
+func (b *BaseUnit) cloneBase() BaseUnit {
+	return BaseUnit{
+		id:     b.id,
+		idBase: b.idBase,
+		name:   b.name,
+		symbol: b.symbol,
+		health: attributes.NewHealth(b.health.GetValue()),
+		armor:  attributes.NewArmor(b.armor.GetValue()),
+		attack: attributes.NewAttack(b.attack.GetValue()),
+		pos:    b.pos,
+	}
+}
+
 func (s *Swordsman) Clone() Unit {
-	return &Swordsman{Infantry{BaseUnit{
-		name:   "Мечник",
-		symbol: "⚔️ ",
-		health: attributes.NewHealth(s.health.GetValue()),
-		armor:  attributes.NewArmor(s.armor.GetValue()),
-		attack: attributes.NewAttack(s.attack.GetValue()),
-		pos:    s.pos,
-	}}}
+	return &Swordsman{Infantry{BaseUnit: s.BaseUnit.cloneBase()}}
 }
 
 func (s *Spearman) Clone() Unit {
-	return &Spearman{Infantry{BaseUnit{
-		name:   "Копейщик",
-		symbol: "🔱",
-		health: attributes.NewHealth(s.health.GetValue()),
-		armor:  attributes.NewArmor(s.armor.GetValue()),
-		attack: attributes.NewAttack(s.attack.GetValue()),
-		pos:    s.pos,
-	}}}
+	return &Spearman{Infantry{BaseUnit: s.BaseUnit.cloneBase()}}
 }
 
 func (l *LightArcher) Clone() Unit {
 	return &LightArcher{Archer{
-		BaseUnit: BaseUnit{
-			name:   "Лёгкий лучник",
-			symbol: "🏹",
-			health: attributes.NewHealth(l.health.GetValue()),
-			armor:  attributes.NewArmor(l.armor.GetValue()),
-			attack: attributes.NewAttack(l.attack.GetValue()),
-			pos:    l.pos,
-		},
-		Range: l.Range,
+		BaseUnit: l.BaseUnit.cloneBase(),
+		Range:    l.Range,
 	}}
 }
 
 func (h *HeavyArcher) Clone() Unit {
 	return &HeavyArcher{Archer{
-		BaseUnit: BaseUnit{
-			name:   "Тяжёлый лучник",
-			symbol: "🎯",
-			health: attributes.NewHealth(h.health.GetValue()),
-			armor:  attributes.NewArmor(h.armor.GetValue()),
-			attack: attributes.NewAttack(h.attack.GetValue()),
-			pos:    h.pos,
-		},
-		Range: h.Range,
+		BaseUnit: h.BaseUnit.cloneBase(),
+		Range:    h.Range,
 	}}
 }
 
 func (c *Cataphract) Clone() Unit {
 	return &Cataphract{Cavalry{
-		BaseUnit: BaseUnit{
-			name:   "Катафракт",
-			symbol: "🐎",
-			health: attributes.NewHealth(c.health.GetValue()),
-			armor:  attributes.NewArmor(c.armor.GetValue()),
-			attack: attributes.NewAttack(c.attack.GetValue()),
-			pos:    c.pos,
-		},
-		Speed: c.Speed,
+		BaseUnit: c.BaseUnit.cloneBase(),
+		Speed:    c.Speed,
 	}}
 }
 
 func (h *HorseArcher) Clone() Unit {
 	return &HorseArcher{Cavalry{
-		BaseUnit: BaseUnit{
-			name:   "Конный лучник",
-			symbol: "🏇",
-			health: attributes.NewHealth(h.health.GetValue()),
-			armor:  attributes.NewArmor(h.armor.GetValue()),
-			attack: attributes.NewAttack(h.attack.GetValue()),
-			pos:    h.pos,
-		},
-		Speed: h.Speed,
+		BaseUnit: h.BaseUnit.cloneBase(),
+		Speed:    h.Speed,
 	}}
 }
 
-func NewBaseUnit(newName, newSymbol string, hp, armor, atk int) *BaseUnit {
+func NewBaseUnit(id, idBase, newName string, newSymbol, hp, armor, atk int) *BaseUnit {
 	return &BaseUnit{
+		id:     id,
+		idBase: idBase,
 		name:   newName,
 		symbol: newSymbol,
 		health: attributes.NewHealth(hp),

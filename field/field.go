@@ -3,20 +3,48 @@ package field
 import (
 	"errors"
 	"fmt"
+	"oop/attributes"
+	"oop/base"
+	"oop/factory"
+	"oop/render"
 	"oop/unit"
 )
 
 type GameField struct {
 	Width, Height, MaxUnits int
 	units                   []unit.Unit
+	bases                   map[string]*base.Base
+	cells                   [][]int
 }
 
 func NewGameField(width, height, maxUnits int) *GameField {
+	cells := make([][]int, height)
+	for i := range cells {
+		cells[i] = make([]int, width)
+		for j := range cells[i] {
+			cells[i][j] = -1
+		}
+	}
+
 	return &GameField{
 		Width:    width,
 		Height:   height,
 		MaxUnits: maxUnits,
 		units:    []unit.Unit{},
+		bases:    map[string]*base.Base{},
+		cells:    cells,
+	}
+}
+
+func (f *GameField) IfCellFree(x, y int) (bool, error) {
+	if x < 0 || x >= f.Width || y >= f.Height || y < 0 {
+		return false, errors.New("выход за границы")
+	}
+
+	if f.cells[y][x] != -1 {
+		return false, fmt.Errorf("клетка (%d, %d) занята", x, y)
+	} else {
+		return true, nil
 	}
 }
 
@@ -25,15 +53,24 @@ func (f *GameField) AddUnit(u unit.Unit, x, y int) error {
 		return errors.New("уже максимальное количество юнитов")
 	}
 
-	if x <= 0 || x >= f.Height || y >= f.Width || 0 >= y {
-		return errors.New("выход за размер поля")
+	if ok, err := f.IfCellFree(x, y); !ok {
+		return fmt.Errorf("Ошибка при проверке клетки: %w", err)
 	}
 
-	if err := f.MoveUnit(u, x, y); err != nil {
-		return fmt.Errorf("ошибка при добавлении юнита: %w", err)
-	}
-
+	u.Move(x, y)
+	f.cells[y][x] = u.GetSymbol()
 	f.units = append(f.units, u)
+	return nil
+}
+
+func (f *GameField) AddBase(b *base.Base, x, y int) error {
+	if ok, err := f.IfCellFree(x, y); !ok {
+		return fmt.Errorf("Ошибка при проверке клетки: %w", err)
+	}
+
+	f.cells[y][x] = b.GetSymbol()
+
+	f.bases[b.GetId()] = b
 	return nil
 }
 
@@ -44,6 +81,71 @@ func (f *GameField) RemoveUnit(index int) error {
 
 	f.units = append(f.units[:index], f.units[index+1:]...)
 	return nil
+}
+
+func (f *GameField) GetFreeCell(idBase string) (int, int) {
+	b := f.bases[idBase]
+	pos := b.GetPosition()
+	for x := -1; x <= 1; x++ {
+		for y := -1; y <= 1; y++ {
+			if y == 0 && x == 0 {
+				continue
+			}
+
+			newX, newY := pos.X+x, pos.Y+y
+			if ok, _ := f.IfCellFree(newX, newY); ok {
+				return newX, newY
+			}
+
+		}
+	}
+	return -1, -1
+}
+
+func (f *GameField) BaseAddUnit(idBase, unitType string) (unit.Unit, error) {
+	var unitFactory factory.UnitFactory
+	b, ok := f.bases[idBase]
+	if !ok {
+		return nil, errors.New("база не найдена")
+	}
+
+	if b.GetMaxUnits() <= len(b.GetUnits()) {
+		return nil, errors.New("количесто юнитов базы уже максимально")
+	}
+
+	cost, ok := attributes.Costs[unitType]
+	if !ok {
+		return nil, errors.New("неизвестный тип юнита")
+	}
+
+	if b.GetIron().GetValue() < cost.Iron && b.GetWood().GetValue() < cost.Wood {
+		return nil, errors.New("недостаточно ресурсов")
+	}
+
+	x, y := f.GetFreeCell(idBase)
+	if x < 0 || y < 0 {
+		return nil, errors.New("нет свободных клеток возле базы")
+	}
+
+	switch unitType {
+	case "swordsman", "spearman":
+		unitFactory = &factory.InfantryFactory{}
+	case "light", "heavy":
+		unitFactory = &factory.ArcherFactory{}
+	case "cataphract", "horse_archer":
+		unitFactory = &factory.CavalryFactory{}
+	}
+
+	u, err := unitFactory.CreateUnit(unitType, idBase)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка при добавлении юнита базой: %w", err)
+	}
+
+	b.GetWood().Decrease(cost.Wood)
+	b.GetIron().Decrease(cost.Iron)
+	f.AddUnit(u, x, y)
+	b.AddUnit(u)
+	return u, nil
 }
 
 func (f *GameField) Clone() *GameField {
@@ -58,17 +160,13 @@ func (f *GameField) Clone() *GameField {
 }
 
 func (f *GameField) MoveUnit(u unit.Unit, x, y int) error {
-	if 0 > x && x > f.Width && 0 > y && y > f.Height {
-		return errors.New("выход за границы")
+	if ok, err := f.IfCellFree(x, y); !ok {
+		return fmt.Errorf("Ошибка при проверке клетки: %w", err)
 	}
 
-	it := f.Iterator()
-	for it.Next() {
-		unit := it.Value()
-		if unit.GetPosition() == u.GetPosition() {
-			return fmt.Errorf("клетка (%d, %d) занята", x, y)
-		}
-	}
+	pos := u.GetPosition()
+	f.cells[pos.Y][pos.X] = -1
+	f.cells[y][x] = u.GetSymbol()
 
 	return u.Move(x, y)
 }
@@ -77,25 +175,14 @@ func (f *GameField) PrintGameField() error {
 	f.DeleteDeadUnits()
 	fmt.Print("\n\n   ")
 	for x := range f.Width {
-		fmt.Printf("%d  ", x%10)
+		fmt.Printf("%d ", x%10)
 	}
 	fmt.Println()
 
-	for y := range f.Height {
+	for y, c1 := range f.cells {
 		fmt.Printf("%d  ", y%10)
-
-		for x := range f.Width {
-			symbol := "⬛"
-			it := f.Iterator()
-			for it.Next() {
-				u := it.Value()
-				pos := u.GetPosition()
-				if pos.X == x && pos.Y == y {
-					symbol = u.GetSymbol()
-					break
-				}
-			}
-			fmt.Printf("%s ", symbol)
+		for _, c2 := range c1 {
+			fmt.Print(render.IdentifySymbol(c2))
 		}
 		fmt.Println()
 	}
@@ -107,26 +194,29 @@ func (f *GameField) PrintUnitsInfo() error {
 	for it.Next() {
 		u := it.Value()
 		fmt.Printf("\n[%s] %-15s | Health: %3d Armor: %2d Attack: %2d ",
-			u.GetSymbol(), u.GetName(), u.GetHealth().GetValue(),
+			render.IdentifySymbol(u.GetSymbol()), u.GetName(), u.GetHealth().GetValue(),
 			u.GetArmor().GetValue(), u.GetAttack().GetValue())
 	}
+	fmt.Println()
 	return nil
 }
 
 func (f *GameField) DeleteDeadUnits() error {
-	it := f.Iterator()
-	for it.Next() {
-		u := it.Value()
-		if u.GetHealth().GetValue() == 0 {
-			f.units = append(f.units[:it.Index], f.units[it.Index+1:]...)
+	aliveUnits := make([]unit.Unit, 0, f.MaxUnits)
+	for _, u := range f.units {
+		if u.GetHealth().GetValue() > 0 {
+			aliveUnits = append(aliveUnits, u)
+		} else {
+			pos := u.GetPosition()
+			f.cells[pos.Y][pos.X] = -1
+			baseId := u.GetIdBase()
+			b := f.bases[baseId]
+			b.RemoveUnit(u.GetId())
 		}
 	}
-	return nil
-}
 
-type GameFieldIterator struct {
-	Field *GameField
-	Index int
+	f.units = aliveUnits
+	return nil
 }
 
 func (f *GameField) Iterator() *GameFieldIterator {
@@ -134,17 +224,4 @@ func (f *GameField) Iterator() *GameFieldIterator {
 		Field: f,
 		Index: -1,
 	}
-}
-
-func (it *GameFieldIterator) Next() bool {
-	it.Index++
-	return it.Index < len(it.Field.units)
-}
-
-func (it *GameFieldIterator) Value() unit.Unit {
-	if it.Index >= 0 && it.Index <= len(it.Field.units) {
-		return it.Field.units[it.Index]
-	}
-
-	return nil
 }
